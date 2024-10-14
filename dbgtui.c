@@ -80,6 +80,7 @@ outer_phase (char *self_name, int n_debuggee_args, char **debuggee_args)
     }
 
   char *extra_args[] = { "gnome-terminal",
+                         "--wait",
                          "--fd=3",
                          "--fd=4",
                          "--fd=5",
@@ -125,9 +126,9 @@ main (int argc, char *argv[])
      - A gnome-terminal layer
      - A GDB layer
      - An inner dbgtui layer
-     
+
      Each layer does some setup and then execs the next layer. */
-  
+
   bool inner_mode = false;
 
   int idx;

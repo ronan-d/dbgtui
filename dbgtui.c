@@ -6,22 +6,41 @@
 #include <argp.h>
 
 #define inner_key 1000
+#define ex_key 1001
 
 const struct argp_option options[] = { { .name = "inner-mode",
                                          .key = inner_key,
                                          .doc = "Run as inner layer",
                                          .flags = OPTION_HIDDEN },
+                                       {
+                                           .name = "ex",
+                                           .key = ex_key,
+                                           .doc = "Execute a GDB command",
+                                           .arg = "COMMAND",
+                                       },
                                        { 0 } };
+
+struct config
+{
+  bool inner_mode;
+  size_t n_gdb_commands;
+  char **gdb_commands;
+};
 
 error_t
 parse_opt (int key, char *arg, struct argp_state *state)
 {
-  bool *inner_mode = state->input;
+  struct config *config = state->input;
 
   switch (key)
     {
     case inner_key:
-      *inner_mode = true;
+      config->inner_mode = true;
+      return 0;
+
+    case ex_key:
+      config->gdb_commands[config->n_gdb_commands] = arg;
+      config->n_gdb_commands++;
       return 0;
 
     default:
@@ -63,7 +82,8 @@ inner_phase (char **debuggee_args)
 }
 
 void
-outer_phase (char *self_name, int n_debuggee_args, char **debuggee_args)
+outer_phase (char *self_name, int n_debuggee_args, char **debuggee_args,
+             int n_gdb_commands, char **gdb_commands)
 {
   const int n = 3;
 
@@ -79,41 +99,49 @@ outer_phase (char *self_name, int n_debuggee_args, char **debuggee_args)
         }
     }
 
-  char *extra_args[] = { "gnome-terminal",
-                         "--wait",
-                         "--fd=3",
-                         "--fd=4",
-                         "--fd=5",
-                         "--",
-                         "gdb",
-                         "-ex",
-                         "catch exec",
-                         "-ex",
-                         "run",
-                         "-ex",
-                         "delete 1",
-                         "--args",
-                         self_name,
-                         "--inner-mode",
-                         "--" };
+  char *extra_args1[] = { "gnome-terminal", "--wait", "--fd=3", "--fd=4",
+                          "--fd=5",         "--",     "gdb",    "-ex",
+                          "catch exec",     "-ex",    "run",    "-ex",
+                          "delete 1" };
 
-  const unsigned n_extra_args = sizeof (extra_args) / sizeof (extra_args[0]);
+  char *extra_args2[]
+      = { "delete 1", "--args", self_name, "--inner-mode", "--" };
+
+  const unsigned n_extra_args1
+      = sizeof (extra_args1) / sizeof (extra_args1[0]);
+  const unsigned n_extra_args2
+      = sizeof (extra_args2) / sizeof (extra_args2[0]);
+
+  const unsigned n_extra_args
+      = n_extra_args1 + 2 * n_gdb_commands + n_extra_args2;
 
   char *args[n_extra_args + n_debuggee_args + 1];
 
-  for (unsigned i = 0; i < n_extra_args; i++)
+  unsigned i = 0;
+  for (unsigned j = 0; j < n_extra_args1; j++)
     {
-      args[i] = extra_args[i];
+      args[i++] = extra_args1[j];
     }
 
-  for (unsigned i = 0; i < n_debuggee_args; i++)
+  for (unsigned j = 0; j < n_gdb_commands; j++)
     {
-      args[i + n_extra_args] = debuggee_args[i];
+      args[i++] = "-ex";
+      args[i++] = gdb_commands[j];
+    }
+
+  for (unsigned j = 0; j < n_extra_args2; j++)
+    {
+      args[i++] = extra_args2[j];
+    }
+
+  for (unsigned j = 0; j < n_debuggee_args; j++)
+    {
+      args[i++] = debuggee_args[j];
     }
 
   args[n_extra_args + n_debuggee_args] = NULL;
 
-  int res = execvp (args[0], args);
+  execvp (args[0], args);
   perror ("execvp");
   exit (EXIT_FAILURE);
 }
@@ -129,18 +157,26 @@ main (int argc, char *argv[])
 
      Each layer does some setup and then execs the next layer. */
 
-  bool inner_mode = false;
+  // The value argc should be an upper bound for the number of GDB commands
+  // passed through -ex.
+  char *gdb_commands[argc];
+  struct config config = {
+    .inner_mode = false,
+    .n_gdb_commands = 0,
+    .gdb_commands = gdb_commands,
+  };
 
   int idx;
 
-  argp_parse (&parser, argc, argv, 0, &idx, &inner_mode);
+  argp_parse (&parser, argc, argv, ARGP_LONG_ONLY, &idx, &config);
 
-  if (inner_mode)
+  if (config.inner_mode)
     {
       inner_phase (&argv[idx]);
     }
   else
     {
-      outer_phase (argv[0], argc - idx, &argv[idx]);
+      outer_phase (argv[0], argc - idx, &argv[idx], config.n_gdb_commands,
+                   config.gdb_commands);
     }
 }

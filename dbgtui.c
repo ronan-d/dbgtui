@@ -1,6 +1,10 @@
+#include <fcntl.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <argp.h>
@@ -81,6 +85,39 @@ inner_phase (char **debuggee_args)
   exit (EXIT_FAILURE);
 }
 
+char *
+terminal_name (void)
+{
+  char *ret = "gnome-terminal";
+
+  int fd = open ("/etc/os-release", O_RDONLY | O_CLOEXEC);
+  if (fd >= 0)
+    {
+      struct stat sb;
+
+      if (fstat (fd, &sb) != -1)
+        {
+          char *s = mmap (NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+
+          if (s != MAP_FAILED)
+            {
+              const char *needle = "Ubuntu";
+
+              if (memmem (s, sb.st_size, needle, strlen (needle)) != NULL)
+                {
+                  ret = "gnome-terminal.real";
+                }
+
+              munmap (s, sb.st_size);
+            }
+        }
+
+      close (fd);
+    }
+
+  return ret;
+}
+
 void
 outer_phase (char *self_name, int n_debuggee_args, char **debuggee_args,
              int n_gdb_commands, char **gdb_commands)
@@ -99,7 +136,7 @@ outer_phase (char *self_name, int n_debuggee_args, char **debuggee_args,
         }
     }
 
-  char *extra_args1[] = { "gnome-terminal", "--wait", "--fd=3", "--fd=4",
+  char *extra_args1[] = { terminal_name (), "--wait", "--fd=3", "--fd=4",
                           "--fd=5",         "--",     "gdb",    "-ex",
                           "catch exec",     "-ex",    "run",    "-ex",
                           "delete 1" };

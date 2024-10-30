@@ -142,8 +142,7 @@ outer_phase (char *self_name, int n_debuggee_args, char **debuggee_args,
                           "catch exec",     "-ex",    "run",    "-ex",
                           "delete 1" };
 
-  char *extra_args2[]
-      = { "delete 1", "--args", self_name, "--inner-mode", "--" };
+  char *extra_args2[] = { "--args", self_name, "--inner-mode", "--" };
 
   const unsigned n_extra_args1
       = sizeof (extra_args1) / sizeof (extra_args1[0]);

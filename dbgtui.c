@@ -137,12 +137,21 @@ outer_phase (char *self_name, int n_debuggee_args, char **debuggee_args,
         }
     }
 
-  char *extra_args1[] = { terminal_name (), "--wait", "--fd=3", "--fd=4",
-                          "--fd=5",         "--",     "gdb",    "-ex",
-                          "catch exec",     "-ex",    "run",    "-ex",
-                          "delete 1" };
+  const char *template = "set exec-wrapper %s --inner-mode --";
 
-  char *extra_args2[] = { "--args", self_name, "--inner-mode", "--" };
+  const size_t wrap_cmd_size = snprintf (NULL, 0, template, self_name) + 1;
+
+  char wrap_cmd[wrap_cmd_size];
+
+  snprintf (wrap_cmd, wrap_cmd_size, template, self_name);
+
+  char *extra_args1[] = {
+    terminal_name (), "--wait", "--fd=3", "--fd=4",
+    "--fd=5",         "--",     "gdb",    "-ex",
+    wrap_cmd,
+  };
+
+  char *extra_args2[] = { "--args" };
 
   const unsigned n_extra_args1
       = sizeof (extra_args1) / sizeof (extra_args1[0]);
